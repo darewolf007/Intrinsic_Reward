@@ -1,0 +1,55 @@
+/.vscode
+./Simulator/ManiSkill/
+pre_model/
+experiments/
+data/
+download/
+results/
+pre_train/
+test/
+*.log
+*.pyc
+.idea/
+old_files/
+__pycache__/
+*.make
+*.cmake
+*.in
+*.rst
+*.png
+*.pth
+#Back files
+*.*~
+*.autosave
+*.orig
+# Compiled Object files
+*.slo
+*.lo
+*.o
+# Compiled Dynamic libraries
+*.so
+*.dylib
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+
+#Stuff added by make eclipse-project
+*.project
+*.pydevproject
+*.cproject
+
+#Vim swap files
+*.swp
+*.swo
+
+# PyCharm
+.idea
+
+# Python
+*.pyc
+
+# VS code config
+.vscode/
+
