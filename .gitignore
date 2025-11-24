@@ -17,6 +17,9 @@ __pycache__/
 *.rst
 *.png
 *.pth
+*.pkl
+*.pt
+outputs/
 #Back files
 *.*~
 *.autosave
@@ -51,4 +54,5 @@ __pycache__/
 
 # VS code config
 .vscode/
+
 
