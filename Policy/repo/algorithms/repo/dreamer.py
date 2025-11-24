@@ -159,10 +159,11 @@ class Dreamer:
     def collect_seed_data(self):
         obs = self.env.reset()
         done = False
+        truncated = False
         # Make sure we collect entire episodes
-        while len(self.buffer) < self.c.prefill or not done:
+        while len(self.buffer) < self.c.prefill or not (done or truncated):
             action = self.env.action_space.sample()
-            next_obs, reward, done, _ = self.env.step(action)
+            next_obs, reward, done , truncated, _ = self.env.step(action)
             self.buffer.push(obs, action, reward, done)
             obs = next_obs if not done else self.env.reset()
 
@@ -422,7 +423,7 @@ class Dreamer:
                     belief, posterior_state, action_tensor, obs_tensor, True
                 )
             action = to_np(action_tensor)[0]
-            next_obs, reward, done, info = self.env.step(action)
+            next_obs, reward, done,truncated, info = self.env.step(action)
             self.buffer.push(obs, action, reward, done)
             obs = next_obs
             episode_reward += reward
@@ -459,11 +460,12 @@ class Dreamer:
         belief, posterior_state, action_tensor = self.init_latent_and_action()
         obs = self.eval_env.reset()
         done = False
+        truncated = False
         episode_reward = 0
         episode_success = 0
         frames = []
         with torch.no_grad():
-            while not done:
+            while not (done or truncated):
                 obs_tensor = to_torch(preprocess(obs[None]))
                 (
                     belief,
@@ -473,7 +475,7 @@ class Dreamer:
                     belief, posterior_state, action_tensor, obs_tensor, False
                 )
                 action = to_np(action_tensor)[0]
-                next_obs, reward, done, info = self.eval_env.step(action)
+                next_obs, reward, done, truncated, info = self.eval_env.step(action)
                 if self.c.pixel_obs:
                     obs_hat = to_np(self.obs_model(belief, posterior_state))
                     obs_hat = postprocess(obs_hat)[0]

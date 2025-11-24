@@ -1,41 +1,14 @@
 import glob
-import gym
+import gymnasium as gym
 import numpy as np
 import os
 import random
 import torch
-from gym.spaces import Box
-
-from dm_control.utils.rewards import tolerance
+from gymnasium.spaces import Box
+from gymnasium import spaces
 from sapien.core import Pose
-from mani_skill2.envs.pick_and_place.pick_cube import (
-    PickCubeEnv,
-    LiftCubeEnv,
-)
-from mani_skill2.envs.misc.turn_faucet import TurnFaucetEnv
-from mani_skill2.utils.common import flatten_dict_space_keys, flatten_state_dict
-from mani_skill2.utils.registration import register_env
-from mani_skill2.utils.sapien_utils import look_at
 from transforms3d.euler import euler2quat
-
-
-camera_poses = {
-    "PickCube": look_at([0.2, 0.4, 0.4], [0.0, 0.0, 0.3]),
-    "TurnFaucet": look_at([0.2, 0.4, 0.4], [0.0, 0.0, 0.3]),
-    "PushCubeMatterport": look_at([0.2, -0.4, 0.4], [0.0, 0.0, 0.3]),
-    "LiftCubeMatterport": look_at([0.2, -0.4, 0.4], [0.0, 0.0, 0.3]),
-    "PickCubeMatterport": look_at([0.2, -0.4, 0.4], [0.0, 0.0, 0.3]),
-    "TurnFaucetMatterport": look_at([0.2, -0.4, 0.4], [0.0, 0.0, 0.3]),
-}
-
-env_kwargs = {
-    "PickCube": {},
-    "TurnFaucet": {"model_ids": "5021"},
-    "PushCubeMatterport": {},
-    "LiftCubeMatterport": {},
-    "PickCubeMatterport": {},
-    "TurnFaucetMatterport": {"model_ids": "5021"},
-}
+from collections import OrderedDict
 
 QPOS_LOW = np.array(
     [0.0, np.pi * 2 / 8, 0, -np.pi * 5 / 8, 0, np.pi * 7 / 8, np.pi / 4, 0.04, 0.04]
@@ -49,6 +22,61 @@ xyz = np.hstack([0.0, 0.0, CUBE_HALF_SIZE])
 quat = np.array([1.0, 0.0, 0.0, 0.0])
 OBJ_INIT_POSE = Pose(xyz, quat)
 
+# maniskill2的工具函数
+def flatten_dict_space_keys(space: spaces.Dict, prefix="") -> spaces.Dict:
+    """Flatten a dict of spaces by expanding its keys recursively."""
+    out = OrderedDict()
+    for k, v in space.spaces.items():
+        if isinstance(v, spaces.Dict):
+            out.update(flatten_dict_space_keys(v, prefix + k + "/").spaces)
+        else:
+            out[prefix + k] = v
+    return spaces.Dict(out)
+
+# maniskill2的工具函数
+def flatten_state_dict(state_dict: dict) -> np.ndarray:
+    """Flatten a dictionary containing states recursively.
+
+    Args:
+        state_dict: a dictionary containing scalars or 1-dim vectors.
+
+    Raises:
+        AssertionError: If a value of @state_dict is an ndarray with ndim > 2.
+
+    Returns:
+        np.ndarray: flattened states.
+
+    Notes:
+        The input is recommended to be ordered (e.g. OrderedDict).
+        However, since python 3.7, dictionary order is guaranteed to be insertion order.
+    """
+    states = []
+    for key, value in state_dict.items():
+        if isinstance(value, dict):
+            state = flatten_state_dict(value)
+            if state.size == 0:
+                state = None
+        elif isinstance(value, (tuple, list)):
+            state = None if len(value) == 0 else value
+        elif isinstance(value, (bool, np.bool_, int, np.int32, np.int64)):
+            # x = np.array(1) > 0 is np.bool_ instead of ndarray
+            state = int(value)
+        elif isinstance(value, (float, np.float32, np.float64)):
+            state = np.float32(value)
+        elif isinstance(value, np.ndarray):
+            if value.ndim > 2:
+                raise AssertionError(
+                    "The dimension of {} should not be more than 2.".format(key)
+                )
+            state = value if value.size > 0 else None
+        else:
+            raise TypeError("Unsupported type: {}".format(type(value)))
+        if state is not None:
+            states.append(state)
+    if len(states) == 0:
+        return np.empty(0)
+    else:
+        return np.hstack(states)
 
 def load_ReplicaCAD(builder):
     paths = sorted(
@@ -80,254 +108,6 @@ def load_Matterport(builder):
     return arena
 
 
-@register_env("PickCubeMatterport-v0", max_episode_steps=100, override=True)
-class PickCubeMatterport(PickCubeEnv):
-    def _clear(self):
-        # Release cached resources
-        self._renderer.clear_cached_resources()
-        super()._clear()
-
-    def _initialize_task(self):
-        # Fix goal position
-        self.goal_pos = np.array([0.1, 0.0, 0.3])
-        self.goal_site.set_pose(Pose(self.goal_pos))
-
-    def _initialize_agent(self):
-        # Set ee to be near the object
-        self.agent.reset(QPOS_LOW)
-        self.agent_init_pose = BASE_POSE
-        self.agent.robot.set_pose(self.agent_init_pose)
-
-    def _initialize_actors(self):
-        self.obj_init_pose = OBJ_INIT_POSE
-        self.obj.set_pose(self.obj_init_pose)
-
-    def _load_actors(self):
-        # Load invisible ground
-        self._add_ground(render=False)
-        # Load cube
-        self.obj = self._build_cube(self.cube_half_size)
-        # Add goal indicator
-        self.goal_site = self._build_sphere_site(self.goal_thresh)
-        # Load arena
-        builder = self._scene.create_actor_builder()
-        self.arena = load_Matterport(builder)
-
-    def get_done(self, info, **kwargs):
-        # Disable done from task completion
-        return False
-
-    def compute_dense_reward(self, info, **kwargs):
-        _CUBE_HALF_SIZE = self.cube_half_size[0]
-        _GOAL_THRESH = self.goal_thresh
-        _LIFT_THRESH = 0.1
-
-        tcp_to_obj = np.linalg.norm(self.obj.pose.p - self.tcp.pose.p)
-        obj_to_goal_xy = np.linalg.norm(self.goal_pos[:2] - self.obj.pose.p[:2])
-        obj_to_goal_z = np.abs(self.goal_pos[2] - self.obj.pose.p[2])
-        gripper_dist = np.linalg.norm(
-            self.agent.finger1_link.pose.p - self.agent.finger2_link.pose.p
-        )
-
-        reaching_reward = tolerance(
-            tcp_to_obj,
-            bounds=(0, _CUBE_HALF_SIZE),
-            margin=np.linalg.norm(self.obj_init_pose.p - self.agent_init_pose.p),
-            sigmoid="long_tail",
-        )
-        reward = reaching_reward
-
-        # Only issue gripping reward if agent is close to object
-        if tcp_to_obj < _CUBE_HALF_SIZE:
-            # Encourage agent to close gripper
-            gripping_reward = tolerance(
-                gripper_dist,
-                bounds=(0, _CUBE_HALF_SIZE * 2),
-                margin=_CUBE_HALF_SIZE,
-                sigmoid="linear",
-            )
-            reward += 0.5 * gripping_reward
-
-        # Only issue placing reward if object is grasped
-        if self.agent.check_grasp(self.obj, max_angle=30):
-            # Add lifting reward
-            lifting_reward = tolerance(
-                obj_to_goal_z,
-                bounds=(0, _GOAL_THRESH),
-                margin=self.goal_pos[2] - self.obj_init_pose.p[2],
-                sigmoid="linear",
-            )
-            reward += 5 * lifting_reward
-
-            if np.abs(self.goal_pos[2] - self.obj.pose.p[2]) < _GOAL_THRESH:
-                # Add placing reward
-                placing_reward = tolerance(
-                    obj_to_goal_xy,
-                    bounds=(0, _GOAL_THRESH),
-                    margin=np.linalg.norm(self.goal_pos[:2] - self.obj_init_pose.p[:2]),
-                    sigmoid="linear",
-                )
-                reward += 5 * placing_reward
-        return reward
-    
-@register_env("PushCubeMatterport-v0", max_episode_steps=100, override=True)
-class PushCubeMatterport(PickCubeMatterport):
-    def _initialize_task(self):
-        # Fix goal position
-        self.goal_pos = np.array([0.2, 0.2, 0.0])
-        self.goal_site.set_pose(Pose(self.goal_pos))
-
-    def compute_dense_reward(self, info, **kwargs):
-        _CUBE_HALF_SIZE = self.cube_half_size[0]
-        _GOAL_THRESH = self.goal_thresh
-
-        tcp_to_obj = np.linalg.norm(self.obj.pose.p - self.tcp.pose.p)
-        obj_to_goal = np.linalg.norm(self.goal_pos - self.obj.pose.p)
-        gripper_dist = np.linalg.norm(
-            self.agent.finger1_link.pose.p - self.agent.finger2_link.pose.p
-        )
-
-        reaching_reward = tolerance(
-            tcp_to_obj,
-            bounds=(0, _CUBE_HALF_SIZE),
-            margin=np.linalg.norm(self.obj_init_pose.p - self.agent_init_pose.p),
-            sigmoid="long_tail",
-        )
-        reward = reaching_reward
-
-        # Only issue gripping reward if agent is close to object
-        if tcp_to_obj < _CUBE_HALF_SIZE:
-            # Encourage agent to close gripper
-            gripping_reward = tolerance(
-                gripper_dist,
-                bounds=(0, _CUBE_HALF_SIZE * 2),
-                margin=_CUBE_HALF_SIZE,
-                sigmoid="linear",
-            )
-            reward += 0.5 * gripping_reward
-
-        # Only issue pushing reward if object is grasped
-        if self.agent.check_grasp(self.obj, max_angle=30):
-            # Add placing reward
-            pushing_reward = tolerance(
-                obj_to_goal,
-                bounds=(0, _GOAL_THRESH),
-                margin=np.linalg.norm(self.goal_pos - self.obj_init_pose.p),
-                sigmoid="linear",
-            )
-            reward += 5 * pushing_reward
-        return reward
-
-
-@register_env("LiftCubeMatterport-v0", max_episode_steps=100, override=True)
-class LiftCubeMatterport(LiftCubeEnv):
-    def _clear(self):
-        # Release cached resources
-        self._renderer.clear_cached_resources()
-        super()._clear()
-
-    def _initialize_task(self):
-        # Fix goal position
-        self.goal_pos = np.array([0.0, 0.0, 0.3])
-        self.goal_site.set_pose(Pose(self.goal_pos))
-
-    def _initialize_agent(self):
-        # Set ee to be near the object
-        self.agent.reset(QPOS_LOW)
-        self.agent_init_pose = BASE_POSE
-        self.agent.robot.set_pose(self.agent_init_pose)
-
-    def _initialize_actors(self):
-        self.obj_init_pose = OBJ_INIT_POSE
-        self.obj.set_pose(self.obj_init_pose)
-
-    def _load_actors(self):
-        # Load invisible ground
-        self._add_ground(render=False)
-        # Load cube
-        self.obj = self._build_cube(self.cube_half_size)
-        # Add goal indicator
-        self.goal_site = self._build_sphere_site(self.goal_thresh)
-        # Load arena
-        builder = self._scene.create_actor_builder()
-        self.arena = load_Matterport(builder)
-
-    def get_done(self, info, **kwargs):
-        # Disable done from task completion
-        return False
-
-    def compute_dense_reward(self, info, **kwargs):
-        _CUBE_HALF_SIZE = self.cube_half_size[0]
-        _GOAL_THRESH = self.goal_thresh
-
-        tcp_to_obj = np.linalg.norm(self.obj.pose.p - self.tcp.pose.p)
-        obj_to_goal_z = np.abs(self.goal_pos[2] - self.obj.pose.p[2])
-        gripper_dist = np.linalg.norm(
-            self.agent.finger1_link.pose.p - self.agent.finger2_link.pose.p
-        )
-
-        reaching_reward = tolerance(
-            tcp_to_obj,
-            bounds=(0, _CUBE_HALF_SIZE),
-            margin=np.linalg.norm(self.obj_init_pose.p - self.agent_init_pose.p),
-            sigmoid="long_tail",
-        )
-        reward = reaching_reward
-
-        # Only issue gripping reward if agent is close to object
-        if tcp_to_obj < _CUBE_HALF_SIZE:
-            # Encourage agent to close gripper
-            gripping_reward = tolerance(
-                gripper_dist,
-                bounds=(0, _CUBE_HALF_SIZE * 2),
-                margin=_CUBE_HALF_SIZE,
-                sigmoid="linear",
-            )
-            reward += 0.5 * gripping_reward
-
-        # Only issue placing reward if object is grasped
-        if self.agent.check_grasp(self.obj, max_angle=30):
-            # Add lifting reward
-            lifting_reward = tolerance(
-                obj_to_goal_z,
-                bounds=(0, _GOAL_THRESH),
-                margin=self.goal_pos[2] - self.obj_init_pose.p[2],
-                sigmoid="linear",
-            )
-            reward += 5 * lifting_reward
-        return reward
-    
-
-@register_env("TurnFaucetMatterport-v0", max_episode_steps=100, override=True)
-class TurnFaucetMatterport(TurnFaucetEnv):
-    def _clear(self):
-        # Release cached resources
-        self._renderer.clear_cached_resources()
-        super()._clear()
-
-    def _initialize_agent(self):
-        # Set ee to be above the faucet
-        self.agent.reset(QPOS_HIGH)
-        self.agent_init_pose = BASE_POSE
-        self.agent.robot.set_pose(self.agent_init_pose)
-    
-    def _initialize_articulations(self):
-        q = euler2quat(0, 0, 0)
-        p = np.array([0.1, 0.0, 0.0])
-        self.faucet.set_pose(Pose(p, q))
-
-    def _load_actors(self):
-        # Add invisible ground
-        self._add_ground(render=False)
-        # Load arena
-        builder = self._scene.create_actor_builder()
-        self.arena = load_Matterport(builder)
-
-    def get_done(self, info, **kwargs):
-        # Disable done from task completion
-        return False
-
-
 class ManiSkillWrapper(gym.Wrapper):
     def __init__(self, env, pixel_obs):
         super().__init__(env)
@@ -353,7 +133,9 @@ class ManiSkillWrapper(gym.Wrapper):
 
     def observation(self, observation):
         if self._pixel_obs:
-            obs = observation["image"]["base_camera"]["rgb"]
+            if isinstance(observation["sensor_data"]["base_camera"]["rgb"], torch.Tensor):
+                observation["sensor_data"]["base_camera"]["rgb"] = observation["sensor_data"]["base_camera"]["rgb"].cpu().numpy()
+            obs = observation["sensor_data"]["base_camera"]["rgb"].squeeze() #(1,128,128,3)
             obs = obs.transpose(2, 0, 1).copy()
             return obs
         else:
@@ -366,9 +148,12 @@ class ManiSkillWrapper(gym.Wrapper):
             )
             return state
 
-    def reset(self, **kwargs):
-        return self.observation(self.env.reset(reconfigure=True, **kwargs))
+    def reset(self):
+        observation, info = self.env.reset(seed=7, options=None)  
+        return self.observation(observation)
 
     def step(self, action):
-        obs, reward, done, info = self.env.step(action)
-        return self.observation(obs), reward, done, info
+        obs, reward, done, truncated, info = self.env.step(action)
+        # reward从tensor变成scalar
+        reward = reward.item() if isinstance(reward, torch.Tensor) else reward
+        return self.observation(obs), reward, done, truncated, info

@@ -14,9 +14,6 @@ def set_gpu_mode(mode, gpu_id=0):
     _GPU_ID = gpu_id
     _USE_GPU = mode
     _DEVICE = torch.device(("cuda:" + str(_GPU_ID)) if _USE_GPU else "cpu")
-    torch.set_default_tensor_type(
-        torch.cuda.FloatTensor if _USE_GPU else torch.FloatTensor
-    )
 
 
 def get_device():

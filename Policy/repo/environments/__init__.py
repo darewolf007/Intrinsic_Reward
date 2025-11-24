@@ -1,9 +1,8 @@
-import gym
+import gymnasium as gym
 import sys
 from functools import partial
-
 sys.path.append("./environments")
-
+from . import maniskill
 from .mt_env import MultitaskEnv, MultitaskVecEnv
 from .vec_env import AsyncVecEnv
 from .wrappers import (
@@ -81,19 +80,18 @@ def make_env(env_id, seed, pixel_obs=False):
             total_frames=1000,
         )
     elif suite == "maniskill":
-        import mani_skill2.envs
-        from maniskill import camera_poses, env_kwargs
+        import mani_skill.envs
         from .maniskill import ManiSkillWrapper
 
-        pose = camera_poses[task]
-        kwargs = env_kwargs[task]
         env = gym.make(
-            f"{task}-v0",
+            f"{task}-v1",
             obs_mode="rgbd",
             control_mode="pd_ee_delta_pose",
             reward_mode="dense",
-            camera_cfgs=dict(base_camera=dict(width=64, height=64, p=pose.p, q=pose.q)),
-            **kwargs,
+            num_envs=1,
+            render_mode="None",
+            sensor_configs=dict(width=64, height=64),
+            # **kwargs,
         )
         env = ManiSkillWrapper(env, pixel_obs)
     else:
@@ -103,10 +101,6 @@ def make_env(env_id, seed, pixel_obs=False):
     if not pixel_obs:
         env = CastObs(env)
 
-    # Set seed
-    env.seed(seed)
-    env.action_space.seed(seed)
-    env.observation_space.seed(seed)
     return env
 
 

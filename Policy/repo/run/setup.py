@@ -93,7 +93,7 @@ def save_cfg(base_dir, cfg):
 def setup_logger(config):
     # Initialize WANDB
     wandb.init(
-        project=os.environ.get("WANDB_PROJECT", "minimal-rl"),
+        project=os.environ.get("WANDB_PROJECT", "minimal-rl-mani3"),
         entity=os.environ.get("MY_WANDB_ID", None),
         group=config.env_id,
         job_type=config.algo,
@@ -110,8 +110,5 @@ def setup_logger(config):
     )
     logger = configure_logger(logdir, ["stdout", "tensorboard", "wandb"])
 
-    # Log experiment info
-    save_cmd(logdir)
-    save_git(logdir)
-    save_cfg(logdir, config)
+
     return logger

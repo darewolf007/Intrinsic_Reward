@@ -1,8 +1,8 @@
-import gym
+import gymnasium as gym
 import numpy as np
 
 from collections import deque
-from gym.spaces import Box
+from gymnasium.spaces import Box
 
 from .img_sources import make_img_source
 

@@ -1,9 +1,9 @@
 import glob
-import gym
+import gymnasium as gym
 import numpy as np
 import os
 
-from gym import spaces
+from gymnasium import spaces
 
 import local_dm_control_suite as suite
 from .img_sources import make_img_source

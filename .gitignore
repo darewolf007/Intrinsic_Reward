@@ -20,6 +20,8 @@ __pycache__/
 *.pkl
 *.pt
 outputs/
+logdir/
+wandb/
 #Back files
 *.*~
 *.autosave
@@ -54,5 +56,4 @@ outputs/
 
 # VS code config
 .vscode/
-
 
