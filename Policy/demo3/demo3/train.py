@@ -28,6 +28,7 @@ torch.backends.cudnn.benchmark = True
 
 torch.set_float32_matmul_precision("high")
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"
 
 @hydra.main(config_name="demo3", config_path="./config/")
 def train(cfg: dict):

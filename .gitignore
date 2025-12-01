@@ -6,6 +6,7 @@ data/
 download/
 pre_train/
 test/
+*.egg-info/
 *.log
 *.pyc
 .idea/
@@ -19,6 +20,7 @@ __pycache__/
 *.pth
 *.pkl
 *.pt
+*.jpg
 outputs/
 logdir/
 wandb/

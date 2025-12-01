@@ -163,7 +163,8 @@ class Dreamer:
         # Make sure we collect entire episodes
         while len(self.buffer) < self.c.prefill or not (done or truncated):
             action = self.env.action_space.sample()
-            next_obs, reward, done , truncated, _ = self.env.step(action)
+            next_obs, reward, terminated , truncated, _ = self.env.step(action)
+            done = terminated or truncated
             self.buffer.push(obs, action, reward, done)
             obs = next_obs if not done else self.env.reset()
 
@@ -423,7 +424,8 @@ class Dreamer:
                     belief, posterior_state, action_tensor, obs_tensor, True
                 )
             action = to_np(action_tensor)[0]
-            next_obs, reward, done,truncated, info = self.env.step(action)
+            next_obs, reward, terminated, truncated, info = self.env.step(action)
+            done = terminated or truncated
             self.buffer.push(obs, action, reward, done)
             obs = next_obs
             episode_reward += reward
@@ -475,7 +477,8 @@ class Dreamer:
                     belief, posterior_state, action_tensor, obs_tensor, False
                 )
                 action = to_np(action_tensor)[0]
-                next_obs, reward, done, truncated, info = self.eval_env.step(action)
+                next_obs, reward, terminated, truncated, info = self.eval_env.step(action)
+                done = terminated or truncated
                 if self.c.pixel_obs:
                     obs_hat = to_np(self.obs_model(belief, posterior_state))
                     obs_hat = postprocess(obs_hat)[0]

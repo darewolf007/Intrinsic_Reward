@@ -78,40 +78,11 @@ def flatten_state_dict(state_dict: dict) -> np.ndarray:
     else:
         return np.hstack(states)
 
-def load_ReplicaCAD(builder):
-    paths = sorted(
-        list(
-            glob.glob(
-                os.path.join("./data/hab2_bench_assets/stages_uncompressed/*.glb")
-            )
-        )
-    )
-    path = random.choice(paths)
-    pose = Pose(q=[0.707, 0.707, 0, 0])  # y-axis up for Habitat scenes
-    builder.add_visual_from_file(path, pose)
-    arena = builder.build_static()
-    # Add offset to workspace
-    offset = np.array([-2.0, -3.0, 0.8])
-    arena.set_pose(Pose(-offset))
-    return arena
-
-
-def load_Matterport(builder):
-    paths = sorted(list(glob.glob(os.path.join("./data/matterport3d/*.glb"))))
-    path = random.choice(paths)
-    pose = Pose(q=[0, 0, 0, 1])  # y-axis up for Matterport scenes
-    builder.add_visual_from_file(path, pose)
-    arena = builder.build_static()
-    # Add offset to workspace
-    offset = np.array([0, 0, 0.8])
-    arena.set_pose(Pose(-offset))
-    return arena
-
 
 class ManiSkillWrapper(gym.Wrapper):
     def __init__(self, env, pixel_obs):
         super().__init__(env)
-        assert env.obs_mode == "rgbd"
+        self.env = env
         self._pixel_obs = pixel_obs
         if pixel_obs:
             self._observation_space = Box(
@@ -133,9 +104,10 @@ class ManiSkillWrapper(gym.Wrapper):
 
     def observation(self, observation):
         if self._pixel_obs:
-            if isinstance(observation["sensor_data"]["base_camera"]["rgb"], torch.Tensor):
-                observation["sensor_data"]["base_camera"]["rgb"] = observation["sensor_data"]["base_camera"]["rgb"].cpu().numpy()
-            obs = observation["sensor_data"]["base_camera"]["rgb"].squeeze() #(1,128,128,3)
+            random_obs = self.env.background_randomization(observation, target_size=64)
+            if isinstance(random_obs["left_camera"], torch.Tensor):
+                random_obs["left_camera"] = random_obs["left_camera"].cpu().numpy()
+            obs = random_obs["left_camera"].squeeze() #(1,128,128,3)
             obs = obs.transpose(2, 0, 1).copy()
             return obs
         else:

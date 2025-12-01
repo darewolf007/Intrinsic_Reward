@@ -11,7 +11,7 @@ sim_backend: gpu
 
 # evaluation
 checkpoint: /absolute/path/to/checkpoint
-eval_episodes: 1
+eval_episodes: 10
 # saving
 save_trajectory: false
 success_only: true

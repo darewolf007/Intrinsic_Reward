@@ -1,7 +1,8 @@
-import gymnasium as gym
 import sys
 from functools import partial
 sys.path.append("./environments")
+import RandomManiskill
+import gymnasium as gym
 from . import maniskill
 from .mt_env import MultitaskEnv, MultitaskVecEnv
 from .vec_env import AsyncVecEnv
@@ -82,15 +83,16 @@ def make_env(env_id, seed, pixel_obs=False):
     elif suite == "maniskill":
         import mani_skill.envs
         from .maniskill import ManiSkillWrapper
-
         env = gym.make(
-            f"{task}-v1",
-            obs_mode="rgbd",
+            f"{task}-v2",
+            obs_mode="rgb+segmentation",
             control_mode="pd_ee_delta_pose",
             reward_mode="dense",
             num_envs=1,
             render_mode="None",
-            sensor_configs=dict(width=64, height=64),
+            background_random=True,
+            light_random=True
+            # sensor_configs=dict(width=64, height=64),
             # **kwargs,
         )
         env = ManiSkillWrapper(env, pixel_obs)

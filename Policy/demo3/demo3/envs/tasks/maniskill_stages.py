@@ -3,6 +3,7 @@ from mani_skill.utils.registration import register_env
 from mani_skill.agents.registration import register_agent
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.agents.robots.panda import PandaWristCam
+from mani_skill.agents.robots.panda import Panda
 from mani_skill.utils import sapien_utils
 import gymnasium as gym
 import numpy as np
@@ -10,7 +11,8 @@ import torch
 import sapien
 from typing import Union
 from envs.utils import convert_observation_to_space, flatten_space
-
+from mani_skill.utils.structs.pose import Pose
+from mani_skill import PACKAGE_ASSET_DIR
 
 class MultiRobotWrapper(gym.ActionWrapper):
     def __init__(self, env):
@@ -28,7 +30,7 @@ class MultiRobotWrapper(gym.ActionWrapper):
 
 
 @register_agent()
-class PandaWristCamPegCustom(PandaWristCam):
+class PandaWristCamPegCustom(Panda):
     """Panda arm robot with the real sense camera attached to gripper"""
 
     uid = "panda_wristcam_custom"
@@ -38,19 +40,19 @@ class PandaWristCamPegCustom(PandaWristCam):
         pose2 = sapien_utils.look_at([0.0, 0.0, 0.0], [0.0, 0.0, 0.4])
         pose3 = sapien_utils.look_at([0.0, 0.0, 0.0], [1.0, 0.0, 0.3])
         q = pose3.q.squeeze().tolist() if isinstance(pose3.q, torch.Tensor) else pose3.q
+        intrinsic = np.array([[905.0100708007812, 0.0, 653.8479614257812], [0.0, 905.0863037109375, 373.97210693359375], [0.0, 0.0, 1.0]])
         return [
             CameraConfig(
                 uid="hand_camera",
                 pose=sapien.Pose(p=[0, 0, 0], q=q),
-                width=128,
-                height=128,
-                fov=1.2 * np.pi / 2,
+                width=1280,
+                height=720,
+                intrinsic=intrinsic,
                 near=0.01,
-                far=10,
+                far=100,
                 mount=self.robot.links_map["camera_link"],
             )
         ]
-
 
 class DEMO3_BaseEnv(BaseEnv):
     SUPPORTED_REWARD_MODES = ("dense", "sparse", "semi_sparse")
@@ -78,42 +80,74 @@ class DEMO3_BaseEnv(BaseEnv):
         eval_info = self.evaluate()
         return sum(stage_indicators.values()) + eval_info["success"].float()
 
+
     @property
     def _default_sensor_configs(self):
-        # Define all the cameras needed for the environment
-        pose_ext = sapien_utils.look_at(
-            eye=[0.6, 0.7, 0.6], target=[0.0, 0.0, 0.35]
-        )  # NOTE: Same as render camera
-        pose_base = sapien_utils.look_at(eye=[0.3, 0, 0.6], target=[-0.1, 0, 0.1])
-        return [
-            CameraConfig(
-                "base_camera",
-                pose=pose_base,
-                width=128,
-                height=128,
-                fov=np.pi / 2,
-                near=0.01,
-                far=100,
-            ),
-            CameraConfig(
-                "ext_camera",
-                pose=pose_ext,
-                width=128,
-                height=128,
-                fov=1,
-                near=0.01,
-                far=100,
-            ),
-        ]
+        calib_p = torch.tensor(
+            [0.553,
+            -0.027871877550427117,
+            0.6863282894133899],
+            dtype=torch.float32,
+            device=self.device,
+        )
+        calib_q = torch.tensor(
+            [0.03128285, -0.37759845, 0.00461725, 0.92542925],
+            dtype=torch.float32,
+            device=self.device,
+        )
+        calib_p = calib_p.unsqueeze(0).repeat(self.num_envs, 1)  # (num_envs, 3)
+        calib_q = calib_q.unsqueeze(0).repeat(self.num_envs, 1)  # (num_envs, 4)
+        pose = Pose.create_from_pq(
+            p=calib_p,
+            q=calib_q,
+        )
+        intrinsic = np.array([[905.0100708007812, 0.0, 653.8479614257812], [0.0, 905.0863037109375, 373.97210693359375], [0.0, 0.0, 1.0]])
+        intrinsic_128 = np.array([[90.501, 0.0,   65.38],[0.0,    160.9, 66.23],[0.0,    0.0,   1.0]])
+        base_pose = sapien_utils.look_at(eye=[0.3, 0, 0.6], target=[-0.1, 0, 0.1])
+        if self.random_cfg["camera_random"]:
+            return [CameraConfig("mine_camera", base_pose, 128, 128, np.pi / 2, 0.01, 100, mount=self.cam_mount),
+            CameraConfig("base_camera", pose=pose, width=128, height=128, intrinsic=intrinsic_128, near=0.01, far=100)]
+        else:
+            return [CameraConfig("base_camera", pose=pose, width=128, height=128, intrinsic=intrinsic_128, near=0.01, far=100)]
+
+
+    # @property
+    # def _default_sensor_configs(self):
+    #     # Define all the cameras needed for the environment
+    #     pose_ext = sapien_utils.look_at(
+    #         eye=[0.6, 0.7, 0.6], target=[0.0, 0.0, 0.35]
+    #     )  # NOTE: Same as render camera
+    #     pose_base = sapien_utils.look_at(eye=[0.3, 0, 0.6], target=[-0.1, 0, 0.1])
+    #     return [
+    #         CameraConfig(
+    #             "base_camera",
+    #             pose=pose_base,
+    #             width=128,
+    #             height=128,
+    #             fov=np.pi / 2,
+    #             near=0.01,
+    #             far=100,
+    #         ),
+    #         CameraConfig(
+    #             "ext_camera",
+    #             pose=pose_ext,
+    #             width=128,
+    #             height=128,
+    #             fov=1,
+    #             near=0.01,
+    #             far=100,
+    #         ),
+    #     ]
+    
 
 
 ############################################
 # Pick And Place
 ############################################
 
-from mani_skill.envs.tasks.tabletop.pick_cube import PickCubeEnv
-
-
+# from mani_skill.envs.tasks.tabletop.pick_cube import PickCubeEnv
+import RandomManiskill
+from RandomManiskill.random_pickcube import PickCubeEnv
 @register_env("PickAndPlace_DEMO3", max_episode_steps=100)
 class PickAndPlace_DEMO3(DEMO3_BaseEnv, PickCubeEnv):
     def __init__(self, *args, **kwargs):

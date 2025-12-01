@@ -11,9 +11,9 @@ from setup import AttrDict, parse_arguments, set_seed, set_device, setup_logger
 from algorithms.repo import Dreamer, MultitaskDreamer, RePo, MultitaskRePo, TIA
 from environments import make_env, make_multitask_env
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "6"
 #set offline
-os.environ["WANDB_MODE"] = "offline"
+# os.environ["WANDB_MODE"] = "offline"
 def get_config():
     config = AttrDict()
     config.algo = "repo"
@@ -28,7 +28,7 @@ def get_config():
     config.num_steps = 500000
     config.replay_size = 800000
     config.prefill = 5000
-    config.train_every = 50
+    config.train_every = 25
     config.train_steps = 10
     config.eval_every = 5000
     config.checkpoint_every = 25000
@@ -39,16 +39,16 @@ def get_config():
     config.state_size = 45
     config.dense_activation_function = "elu"
     config.cnn_activation_function = "relu"
-    config.batch_size = 64
-    config.chunk_size = 30
+    config.batch_size = 128
+    config.chunk_size = 15
     config.horizon = 15
     config.gamma = 0.99
     config.gae_lambda = 0.95
     config.action_noise = 0.0
-    config.action_ent_coef = 3e-4
+    config.action_ent_coef = 2e-3
     config.latent_ent_coef = 0.0
-    config.free_nats = 1
-    config.model_lr = 3e-4
+    config.free_nats = 3
+    config.model_lr = 2e-4
     config.actor_lr = 8e-5
     config.value_lr = 4e-5 
     config.grad_clip_norm = 40
@@ -79,9 +79,9 @@ def get_config():
     config.share_repr = False
 
     # TIA
-    config.tia_obs_coef = 1.0
-    config.tia_adv_coef = 1.0
-    config.tia_reward_train_steps = 1
+    config.tia_obs_coef = 0.0
+    config.tia_adv_coef = 0.0
+    config.tia_reward_train_steps = 0
 
     return parse_arguments(config)
 

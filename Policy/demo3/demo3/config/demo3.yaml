@@ -32,9 +32,9 @@ pretrain:
 
 # logging
 wandb_project: demo3
-wandb_entity: ???
+wandb_entity: sun1599895936
 wandb_silent: true
-disable_wandb: true
+disable_wandb: false
 save_csv: false
 
 # reward learning

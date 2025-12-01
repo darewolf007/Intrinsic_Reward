@@ -119,7 +119,7 @@ MANISKILL_TASKS = {
 }
 
 
-def select_obs(keys, obs):
+def select_obs(keys, obs, env = None):
     """
     Processes observations on the first nested level of the obs dictionary
 
@@ -135,24 +135,30 @@ def select_obs(keys, obs):
             # Stack all states
             state_agent = flatten_state_dict(obs["agent"], use_torch=True)
             state_extra = flatten_state_dict(obs["extra"], use_torch=True)
-            processed["state"] = torch.cat([state_agent, state_extra], dim=-1)
+            # processed["state"] = torch.cat([state_agent, state_extra], dim=-1)
+            processed["state"] = torch.cat([state_agent[:,:9]], dim=-1)
         elif k == "image":
+            random_obs = env.background_randomization(obs, target_size=None)
+            processed["rgb_base"] = torch.from_numpy(random_obs["base_camera"]).to(device=env.device).permute(0, 3, 1, 2)
+            if "hand_camera" in random_obs.keys():
+                processed["rgb_hand"] = torch.from_numpy(random_obs["hand_camera"]).to(device=env.device).permute(0, 3, 1, 2)
+            
             # Only take rgb + Put channel dimension first
-            processed["rgb_base"] = obs["sensor_data"]["base_camera"]["rgb"].permute(
-                0, 3, 1, 2
-            )
-            if "hand_camera" in obs["sensor_data"].keys():
-                processed["rgb_hand"] = obs["sensor_data"]["hand_camera"][
-                    "rgb"
-                ].permute(0, 3, 1, 2)
-            elif "head_camera" in obs["sensor_data"].keys():
-                processed["rgb_head"] = obs["sensor_data"]["head_camera"][
-                    "rgb"
-                ].permute(0, 3, 1, 2)
-            elif "ext_camera" in obs["sensor_data"].keys():
-                processed["rgb_ext"] = obs["sensor_data"]["ext_camera"]["rgb"].permute(
-                    0, 3, 1, 2
-                )
+            # processed["rgb_base"] = obs["sensor_data"]["base_camera"]["rgb"].permute(
+            #     0, 3, 1, 2
+            # )
+            # if "hand_camera" in obs["sensor_data"].keys():
+            #     processed["rgb_hand"] = obs["sensor_data"]["hand_camera"][
+            #         "rgb"
+            #     ].permute(0, 3, 1, 2)
+            # elif "head_camera" in obs["sensor_data"].keys():
+            #     processed["rgb_head"] = obs["sensor_data"]["head_camera"][
+            #         "rgb"
+            #     ].permute(0, 3, 1, 2)
+            # elif "ext_camera" in obs["sensor_data"].keys():
+            #     processed["rgb_ext"] = obs["sensor_data"]["ext_camera"]["rgb"].permute(
+            #         0, 3, 1, 2
+            #     )
 
         else:
             return NotImplementedError
@@ -197,14 +203,14 @@ class ManiSkillWrapper(gym.Wrapper):
     def reset(self, seed=None):
         self._t = 0
         obs, info = self.env.reset(seed=seed, options=None)
-        return (select_obs(self.obs_keys, obs) if isinstance(obs, dict) else obs), info
+        return (select_obs(self.obs_keys, obs, self.env) if isinstance(obs, dict) else obs), info
 
     def step(self, action):
         for _ in range(self.cfg.action_repeat):
             obs, r, terminated, _, info = self.env.step(action)
             reward = r  # Options: max, sum, min
         if isinstance(obs, dict):
-            obs = select_obs(self.obs_keys, obs)
+            obs = select_obs(self.obs_keys, obs, self.env)
         self._t += 1
         done = torch.tensor([self._t >= self.max_episode_steps] * self.num_envs)
         return obs, reward, terminated, done, info
@@ -217,7 +223,7 @@ class ManiSkillWrapper(gym.Wrapper):
         )
 
     def get_obs(self, *args, **kwargs):
-        return select_obs(self.obs_keys, self.env.get_obs())
+        return select_obs(self.obs_keys, self.env.get_obs(), self.env)
 
     @property
     def unwrapped(self):
@@ -244,12 +250,14 @@ def make_env(cfg):
     # WARNING: If one env is already in GPU, the other ones must also be in GPU
     env = gym.make(
         task_cfg["env"],
-        obs_mode="rgbd" if cfg.obs in ("rgbd", "rgb") else cfg.obs,
+        obs_mode="rgb+segmentation" if cfg.obs in ("rgbd", "rgb") else cfg.obs,
         control_mode=task_cfg["control_mode"],
         num_envs=cfg.num_envs,
         reward_mode=task_cfg.get("reward_mode", None),
         render_mode="rgb_array",
-        sensor_configs=camera_resolution,
+        background_random=True,
+        light_random=True,
+        # sensor_configs=camera_resolution,
         human_render_camera_configs=dict(width=384, height=384),
         reconfiguration_freq=1 if cfg.num_envs > 1 else None,
         sim_backend=cfg.maniskill.get("sim_backend", "auto"),
