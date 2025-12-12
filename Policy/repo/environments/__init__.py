@@ -84,14 +84,14 @@ def make_env(env_id, seed, pixel_obs=False):
         import mani_skill.envs
         from .maniskill import ManiSkillWrapper
         env = gym.make(
-            f"{task}-v2",
+            f"{task}-v3",
             obs_mode="rgb+segmentation",
             control_mode="pd_ee_delta_pose",
             reward_mode="dense",
             num_envs=1,
             render_mode="None",
             background_random=True,
-            light_random=True
+            light_random=False
             # sensor_configs=dict(width=64, height=64),
             # **kwargs,
         )

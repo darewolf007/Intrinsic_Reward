@@ -119,7 +119,7 @@ MANISKILL_TASKS = {
 }
 
 
-def select_obs(keys, obs, env = None):
+def select_obs(keys, obs, env = None, cfg = None):
     """
     Processes observations on the first nested level of the obs dictionary
 
@@ -135,8 +135,21 @@ def select_obs(keys, obs, env = None):
             # Stack all states
             state_agent = flatten_state_dict(obs["agent"], use_torch=True)
             state_extra = flatten_state_dict(obs["extra"], use_torch=True)
-            # processed["state"] = torch.cat([state_agent, state_extra], dim=-1)
-            processed["state"] = torch.cat([state_agent[:,:9]], dim=-1)
+            if cfg is not None:
+                state_type = cfg.get("state_type", "joint")
+                if state_type == "joint":
+                    processed["state"] = torch.cat([state_agent[:, : cfg.num_joints]], dim=-1)
+                elif state_type == "joint+vel":
+                    processed["state"] = torch.cat([state_agent], dim=-1)
+                elif state_type == "joint+vel+object":
+                    processed["state"] = torch.cat([state_agent, state_extra], dim=-1)
+                elif state_type == "object":
+                    processed["state"] = torch.cat([state_extra], dim=-1)
+                else:
+                    raise NotImplementedError
+            else:
+                print("Warning: No cfg provided for state_type filtering.")
+                processed["state"] = torch.cat([state_agent, state_extra], dim=-1)
         elif k == "image":
             random_obs = env.background_randomization(obs, target_size=None)
             processed["rgb_base"] = torch.from_numpy(random_obs["base_camera"]).to(device=env.device).permute(0, 3, 1, 2)
@@ -166,10 +179,12 @@ def select_obs(keys, obs, env = None):
 
 
 class ManiSkillWrapper(gym.Wrapper):
-    def __init__(self, env, cfg):
+    def __init__(self, env, cfg, state_type="joint", num_joints=9):
         super().__init__(env)
         self.env = env
         self.cfg = cfg
+        self.cfg.state_type = state_type
+        self.cfg.num_joints = num_joints
         self.action_space = env.single_action_space
         self.max_episode_steps = cfg.max_episode_steps
 
@@ -203,14 +218,14 @@ class ManiSkillWrapper(gym.Wrapper):
     def reset(self, seed=None):
         self._t = 0
         obs, info = self.env.reset(seed=seed, options=None)
-        return (select_obs(self.obs_keys, obs, self.env) if isinstance(obs, dict) else obs), info
+        return (select_obs(self.obs_keys, obs, self.env, self.cfg) if isinstance(obs, dict) else obs), info
 
     def step(self, action):
         for _ in range(self.cfg.action_repeat):
             obs, r, terminated, _, info = self.env.step(action)
             reward = r  # Options: max, sum, min
         if isinstance(obs, dict):
-            obs = select_obs(self.obs_keys, obs, self.env)
+            obs = select_obs(self.obs_keys, obs, self.env, self.cfg)
         self._t += 1
         done = torch.tensor([self._t >= self.max_episode_steps] * self.num_envs)
         return obs, reward, terminated, done, info
@@ -223,7 +238,7 @@ class ManiSkillWrapper(gym.Wrapper):
         )
 
     def get_obs(self, *args, **kwargs):
-        return select_obs(self.obs_keys, self.env.get_obs(), self.env)
+        return select_obs(self.obs_keys, self.env.get_obs(), self.env, self.cfg)
 
     @property
     def unwrapped(self):
@@ -255,8 +270,10 @@ def make_env(cfg):
         num_envs=cfg.num_envs,
         reward_mode=task_cfg.get("reward_mode", None),
         render_mode="rgb_array",
-        background_random=True,
-        light_random=True,
+        background_random=cfg.background_random,
+        light_random=cfg.light_random,
+        camera_random=cfg.camera_random,
+        texture_random=cfg.texture_random,
         # sensor_configs=camera_resolution,
         human_render_camera_configs=dict(width=384, height=384),
         reconfiguration_freq=1 if cfg.num_envs > 1 else None,
@@ -270,5 +287,5 @@ def make_env(cfg):
     if isinstance(cfg.max_bc_steps, str):
         cfg.max_bc_steps = cfg.maniskill.max_bc_steps
 
-    env = ManiSkillWrapper(env, cfg.maniskill)
+    env = ManiSkillWrapper(env, cfg.maniskill, state_type=cfg.get("state_type", "joint"), num_joints=cfg.get("num_joints", 9))
     return env

@@ -121,7 +121,7 @@ class ManiSkillWrapper(gym.Wrapper):
             return state
 
     def reset(self):
-        observation, info = self.env.reset(seed=7, options=None)  
+        observation, info = self.env.reset(options=None)  
         return self.observation(observation)
 
     def step(self, action):

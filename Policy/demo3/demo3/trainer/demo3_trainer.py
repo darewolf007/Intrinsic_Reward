@@ -34,6 +34,7 @@ class Demo3Trainer(Trainer):
             self.cfg.discriminator,
             state_shape=(self.cfg.latent_dim,),
             compile=self.cfg.compile,
+            other_cfg = self.cfg
         )
 
         print("Discriminator Architecture:", self.disc)

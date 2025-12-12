@@ -1,1 +1,1 @@
-from .random_pickcube import PickCubeEnv
+from .random_pickcube import PickCubeEnv, RepoPickCubeEnv

@@ -203,3 +203,29 @@ def enc(cfg, out={}):
                 f"Encoder for observation type {k} not implemented."
             )
     return nn.ModuleDict(out)
+
+def enc(cfg, modality="all", out={}): 
+    out={}
+    for k in cfg.obs_shape.keys():
+        if modality == "rgb" and not k.startswith("rgb"):
+            continue
+        if modality == "state" and not k.startswith("state"):
+            continue
+
+        if k.startswith("state"):
+            out[k] = mlp(
+                cfg.obs_shape[k][0] + cfg.task_dim,
+                max(cfg.num_enc_layers - 1, 1) * [cfg.enc_dim],
+                cfg.latent_dim,
+                act=SimNorm(cfg),
+            )
+        elif k.startswith("rgb"):
+            out[k] = conv(
+                cfg.obs_shape[k], cfg.num_channels, cfg.latent_dim, act=SimNorm(cfg)
+            )
+        else:
+            raise NotImplementedError(
+                f"Encoder for observation type {k} not implemented."
+            )
+            
+    return nn.ModuleDict(out)

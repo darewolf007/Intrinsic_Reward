@@ -11,7 +11,7 @@ from setup import AttrDict, parse_arguments, set_seed, set_device, setup_logger
 from algorithms.repo import Dreamer, MultitaskDreamer, RePo, MultitaskRePo, TIA
 from environments import make_env, make_multitask_env
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "6"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 #set offline
 # os.environ["WANDB_MODE"] = "offline"
 def get_config():
@@ -41,7 +41,7 @@ def get_config():
     config.cnn_activation_function = "relu"
     config.batch_size = 128
     config.chunk_size = 15
-    config.horizon = 15
+    config.horizon = 10
     config.gamma = 0.99
     config.gae_lambda = 0.95
     config.action_noise = 0.0
@@ -59,7 +59,7 @@ def get_config():
     config.save_buffer = False
 
     # RePo
-    config.target_kl = 1.5
+    config.target_kl = 2.0
     config.beta_lr = 2e-4
     config.init_beta = 1e-4
     config.prior_train_steps = 5

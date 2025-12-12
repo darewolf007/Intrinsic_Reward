@@ -87,8 +87,8 @@ class TableSceneBuilder(SceneBuilder):
             #     ]
             # )
             # shw change: update panda qpos
-            qpos = np.array([ 0.02081605,  0.23974331,  0.06287354, -2.14305804, -0.06467315,
-        2.38520192,  0.94204338, 0.04, 0.04])
+            qpos = np.array([ -0.11795206, -0.18574206,  0.06268193, -2.36373994,  0.01197141,
+        2.17416908,  0.72161883, 0.04, 0.04])
             if self.env._enhanced_determinism:
                 qpos = (
                     self.env._batched_episode_rng[env_idx].normal(

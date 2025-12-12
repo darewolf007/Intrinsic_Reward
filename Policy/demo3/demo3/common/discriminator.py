@@ -5,17 +5,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from tensordict.tensordict import TensorDict
-
+from common import layers
 
 class Discriminator(nn.Module):
-    def __init__(self, envs, cfg, state_shape=None, compile=False):
+    def __init__(self, envs, cfg, state_shape=None, compile=False, other_cfg=None):
         super().__init__()
         self.n_stages = envs.n_stages
         state_shape = (
             np.prod(state_shape)
             if state_shape
-            else np.prod(envs.observation_space.shape)
+            else np.prod(envs.observation_space['state'].shape)
         )
+        self.encoder = layers.enc(other_cfg, modality=other_cfg.reward_obs)
         self.nets = nn.ModuleList(
             [
                 nn.Sequential(
@@ -27,6 +28,7 @@ class Discriminator(nn.Module):
             ]
         )
         self.trained = [False] * self.n_stages
+        self.other_cfg = other_cfg  
         self._cfg = cfg
         self.device = torch.device("cuda:0")
         self.to(self.device)
@@ -52,6 +54,28 @@ class Discriminator(nn.Module):
 
     def set_trained(self, stage_idx):
         self.trained[stage_idx] = True
+
+
+    def encode(self, obs):
+        if isinstance(obs, (dict, TensorDict)):
+            out = []
+            for k, enc_layer in self.encoder.items():
+                if k in obs:
+                    val = obs[k]
+                    if k.startswith("rgb") and val.ndim == 5:
+                        encoded = torch.stack([enc_layer(o) for o in val])
+                    else:
+                        encoded = enc_layer(val)
+                    out.append(encoded)
+            if len(out) == 0:
+                raise ValueError(f"Discriminator obs missing keys for: {self._cfg.reward_obs}")
+            
+            return torch.stack(out).mean(0)
+        if len(self.encoder) == 1:
+            key = list(self.encoder.keys())[0]
+            return self.encoder[key](obs)
+        
+        return obs
 
     def forward(self, next_s, stage_idx):
         net = self.nets[stage_idx]
@@ -90,11 +114,11 @@ class Discriminator(nn.Module):
                 dim=0,
             )
 
-            if encoder_function:
-                with torch.no_grad():
-                    disc_next_obs = encoder_function(disc_next_obs)
-
-            logits = self(disc_next_obs, stage_idx)
+            # if encoder_function:
+            #     with torch.no_grad():
+            #         disc_next_obs = encoder_function(disc_next_obs)
+            z = self.encode(disc_next_obs)
+            logits = self(z, stage_idx)
             disc_loss = F.binary_cross_entropy_with_logits(logits, disc_labels)
 
             self.optimizer.zero_grad()
@@ -119,10 +143,10 @@ class Discriminator(nn.Module):
                 stage_idx <= self.n_stages
             ).all(), "Stage idx is out of bounds!"
             bs = stage_idx.shape[:-1]
-
+            z = self.encode(next_s)
             stage_rewards = [
                 (
-                    torch.tanh(self(next_s, stage_idx=i))
+                    torch.tanh(self(z, stage_idx=i))
                     if self.trained[i]
                     else torch.zeros(*bs + (1,), device=next_s.device)
                 )

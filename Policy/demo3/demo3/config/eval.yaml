@@ -8,10 +8,15 @@ obs: state
 obs_save: rgbd
 num_envs: 1
 sim_backend: gpu
-
+background_random: true
+light_random: false
+camera_random: false
+texture_random: false
+state_type: joint+vel+object # joint, joint+vel, joint+vel+object, object
+num_joints: 9
 # evaluation
 checkpoint: /absolute/path/to/checkpoint
-eval_episodes: 10
+eval_episodes: 100
 # saving
 save_trajectory: false
 success_only: true

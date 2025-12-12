@@ -25,7 +25,8 @@ class WorldModel(nn.Module):
             )
             for i in range(len(cfg.tasks)):
                 self._action_masks[i, : cfg.action_dims[i]] = 1.0
-        self._encoder = layers.enc(cfg)
+        # self._encoder = layers.enc(cfg)
+        self._encoder = layers.enc(cfg, modality=cfg.agent_obs)
         self._dynamics = layers.mlp(
             cfg.latent_dim + cfg.action_dim + cfg.task_dim,
             2 * [cfg.mlp_dim],

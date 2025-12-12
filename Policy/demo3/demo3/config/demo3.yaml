@@ -7,6 +7,16 @@ seed: 1
 task: ms-peg-insertion-semi
 obs: rgb
 num_envs: 16
+background_random: true
+light_random: false
+camera_random: false
+texture_random: false
+state_type: joint+vel+object # joint, joint+vel, joint+vel+object, object
+num_joints: 9
+
+# obs
+agent_obs: rgb # state, rgb, all
+reward_obs: state # state, rgb, all
 
 # evaluation
 eval_episodes: 10

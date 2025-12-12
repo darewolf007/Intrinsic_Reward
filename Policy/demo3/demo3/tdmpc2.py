@@ -388,7 +388,7 @@ class TDMPC2(torch.nn.Module):
 
             # Modify reward if necessary
             if modify_reward:
-                reward = modify_reward(next_z, reward)
+                reward = modify_reward(obs[1:], reward)
 
             if action_penalty:
                 reward -= torch.linalg.norm(action, ord=2, dim=-1, keepdim=True).pow(
